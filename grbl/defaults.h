@@ -105,13 +105,13 @@
   #define DEFAULT_A_MAX_TRAVEL 100.0        // mm NOTE: Must be a positive value.
   #define DEFAULT_SPINDLE_PWM_FREQ 20000     // Hz (2000 - 20000)
   #define DEFAULT_SPINDLE_PWM_OFF_VALUE 0    // %
-  #define DEFAULT_SPINDLE_PWM_MIN_VALUE 1    // %
+  #define DEFAULT_SPINDLE_PWM_MIN_VALUE 17   // % just below tube firing threshold (first mark 17.68% / ~4.25 mA, Nov 2026)
   #define DEFAULT_SPINDLE_PWM_MAX_VALUE 68   // %
   #define DEFAULT_SPINDLE_RPM_MAX 1000.0    // rpm (S-value)
   #define DEFAULT_SPINDLE_RPM_MIN 0.0       // rpm (S-value)
   #define DEFAULT_STEP_PULSE_MICROSECONDS 10
   #define DEFAULT_STEPPING_INVERT_MASK 0
-  #define DEFAULT_DIRECTION_INVERT_MASK 3   // 3 = invert X+Y
+  #define DEFAULT_DIRECTION_INVERT_MASK 1   // 1 = invert X: +X right, +Y toward front
   #define DEFAULT_STEPPER_IDLE_LOCK_TIME 255// msec (0-254, 255 keeps steppers enabled)
   #define DEFAULT_STATUS_REPORT_MASK 0      // WPos enabled
   #define DEFAULT_JUNCTION_DEVIATION 0.01   // mm
@@ -119,14 +119,14 @@
   #define DEFAULT_REPORT_INCHES 0           // false
   #define DEFAULT_INVERT_ST_ENABLE 0        // false
   #define DEFAULT_INVERT_LIMIT_PINS 0       // true for microswitches / false for optical sensors
-  #define DEFAULT_SOFT_LIMIT_ENABLE 0       // true
+  #define DEFAULT_SOFT_LIMIT_ENABLE 1       // true
   #define DEFAULT_HARD_LIMIT_ENABLE 0       // false
   #define DEFAULT_INVERT_PROBE_PIN 0        // false
   #define DEFAULT_LASER_MODE 1              // true
   #define DEFAULT_HOMING_ENABLE 1           // true
-  #define DEFAULT_HOMING_DIR_MASK 1         // move top/left
+  #define DEFAULT_HOMING_DIR_MASK 3         // X and Y home toward minus: rear-left = 0,0
   #define DEFAULT_HOMING_FEED_RATE 50.0     // mm/min
-  #define DEFAULT_HOMING_SEEK_RATE 6000.0   // mm/min
+  #define DEFAULT_HOMING_SEEK_RATE 3000.0   // mm/min
   #define DEFAULT_HOMING_DEBOUNCE_DELAY 250 // msec (0-65k)
   #define DEFAULT_HOMING_PULLOFF 2.0        // mm
   #define HOMING_CYCLE_0 ((1<<X_AXIS)|(1<<Y_AXIS))
