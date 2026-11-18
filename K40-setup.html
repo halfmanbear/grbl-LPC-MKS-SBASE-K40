@@ -78,6 +78,43 @@ Earlier firmware left P4.28 as an input, so the shifter was fed only through the
 </section>
 
 <section>
+<h2>Flashing the firmware</h2>
+<p>The MKS SBASE uses an SD-card bootloader. Flash <a href="build/firmware.bin">build/firmware.bin</a>. Do not flash <code>build/grbl.hex</code>: it overwrites the bootloader, which then needs a hardware programmer to restore.</p>
+
+<h3>Before flashing</h3>
+<ol>
+<li>Disable the laser at the PSU (laser switch or test/enable switch). New builds can change gate and power-command behaviour at boot, so nothing should be able to fire until it is checked.</li>
+<li>Send <code>$$</code> in the LightBurn console and save the output. <a href="K40_config.nc">K40_config.nc</a> is the reference copy.</li>
+</ol>
+
+<h3>Flashing</h3>
+<ol>
+<li>Power the board down and remove the microSD card. GRBL-LPC does not expose the card over USB, so use a card reader.</li>
+<li>Back up any existing <code>FIRMWARE.CUR</code> from the card. It is the image currently on the board and the way back if needed.</li>
+<li>Copy <code>build/firmware.bin</code> to the card root, named exactly <code>firmware.bin</code>. The card must be FAT32.</li>
+<li>Eject the card cleanly, refit it and power up. The LEDs flash for a few seconds while the bootloader writes the image.</li>
+<li>Remove the card again and check that <code>firmware.bin</code> has been renamed to <code>FIRMWARE.CUR</code>. If <code>firmware.bin</code> is still there, the flash did not happen. The usual causes are a wrong file name or a non-FAT32 card.</li>
+</ol>
+
+<h3>After flashing, with the laser still disabled</h3>
+<ol>
+<li>Connect in LightBurn and confirm the start-up line shows <code>Grbl 1.1f</code>.</li>
+<li>Send <code>$$</code> and compare with <a href="K40_config.nc">K40_config.nc</a>. Settings normally survive a reflash. If they have been reset to defaults, send each line of <code>K40_config.nc</code> through the console.</li>
+<li>Measure J8 pin 6 to DGND. It should read about 3.3 V from the P4.28 supply.</li>
+<li>Jog the axes to confirm motion and motor current are normal.</li>
+</ol>
+
+<h3>With the laser enabled, at low power</h3>
+<ol>
+<li><strong>Zero-power test:</strong> run <code>M3 S0</code> with a <code>G1</code> move and a <code>G0</code> move. The mA meter should stay at zero.</li>
+<li><strong>Supply under load:</strong> fire at a low S value and confirm J8 pin 6 stays close to 3.3 V.</li>
+<li><strong><code>M0</code> test:</strong> run a short job containing <code>M0</code>. The laser should stay off through the pause and come back only on the next powered cut, never during a travel move.</li>
+</ol>
+
+<p><strong>Rollback:</strong> copy the saved <code>FIRMWARE.CUR</code> back to the card as <code>firmware.bin</code> and power-cycle.</p>
+</section>
+
+<section>
 <h2>Operating notes</h2>
 <ul>
 <li>The setup runs and the signal levels and PWM were checked in January 2026. Intermittent re-ignition after <code>M0</code> prompted the resume fix. The rebuilt <a href="build/firmware.bin">firmware image</a> includes it. The fix still needs validation on the machine.</li>
