@@ -31,6 +31,28 @@
   float spindle_pwm_max_value;
 #endif
 
+#if defined(VARIABLE_SPINDLE) && defined(USE_SPINDLE_DIR_AS_ENABLE_PIN) && !defined(SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED)
+  static volatile bool spindle_enable_pending;
+
+  void spindle_defer_enable_until_motion()
+  {
+    spindle_enable_pending = true;
+  }
+
+  void spindle_set_segment_speed(uint32_t pwm_value)
+  {
+    spindle_set_speed(pwm_value);
+    if (spindle_enable_pending && pwm_value > (uint32_t)spindle_pwm_off_value) {
+      #ifdef INVERT_SPINDLE_ENABLE_PIN
+        SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT);
+      #else
+        SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);
+      #endif
+      spindle_enable_pending = false;
+    }
+  }
+#endif
+
 
 void spindle_init()
 {
@@ -39,15 +61,18 @@ void spindle_init()
     spindle_pwm_off_value = (spindle_pwm_period * settings.spindle_pwm_off_value / 100);
     spindle_pwm_min_value = (spindle_pwm_period * settings.spindle_pwm_min_value / 100);
     spindle_pwm_max_value = (spindle_pwm_period * settings.spindle_pwm_max_value / 100);
+    // Keep off <= min <= max so the S-to-PWM curve can never run backwards ($34/$35/$36 are set one at a time).
+    if (spindle_pwm_min_value > spindle_pwm_max_value) { spindle_pwm_min_value = spindle_pwm_max_value; }
+    if (spindle_pwm_off_value > spindle_pwm_min_value) { spindle_pwm_off_value = spindle_pwm_min_value; }
     pwm_init(&SPINDLE_PWM_CHANNEL, SPINDLE_PWM_USE_PRIMARY_PIN, SPINDLE_PWM_USE_SECONDARY_PIN, spindle_pwm_period, 0);
     pwm_enable(&SPINDLE_PWM_CHANNEL);
 
     // Configure variable spindle PWM and enable pin, if requried. On the Uno, PWM and enable are
     // combined unless configured otherwise.
     #ifdef USE_SPINDLE_DIR_AS_ENABLE_PIN
-      SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
-    #else
       SPINDLE_DIRECTION_DDR |= (1<<SPINDLE_DIRECTION_BIT); // Configure as output pin.
+    #else
+      SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
     #endif
 
     pwm_gradient = (spindle_pwm_max_value-spindle_pwm_min_value)/(settings.rpm_max-settings.rpm_min);
@@ -64,13 +89,13 @@ void spindle_init()
 
 uint8_t spindle_get_state()
 {
-	#ifdef VARIABLE_SPINDLE
+  #ifdef VARIABLE_SPINDLE
         #ifdef USE_SPINDLE_DIR_AS_ENABLE_PIN
             // No spindle direction output pin. 
             #ifdef INVERT_SPINDLE_ENABLE_PIN
-                if (bit_isfalse(SPINDLE_ENABLE_PORT,(1<<SPINDLE_ENABLE_BIT))) { return(SPINDLE_STATE_CW); }
+                if (bit_isfalse(SPINDLE_DIRECTION_PORT,(1<<SPINDLE_DIRECTION_BIT))) { return(SPINDLE_STATE_CW); }
             #else
-                if (bit_istrue(SPINDLE_ENABLE_PORT,(1<<SPINDLE_ENABLE_BIT))) { return(SPINDLE_STATE_CW); }
+                if (bit_istrue(SPINDLE_DIRECTION_PORT,(1<<SPINDLE_DIRECTION_BIT))) { return(SPINDLE_STATE_CW); }
             #endif
         #else
             if (SPINDLE_TCCRA_REGISTER & (1<<SPINDLE_COMB_BIT)) { // Check if PWM is enabled.
@@ -78,17 +103,17 @@ uint8_t spindle_get_state()
                 else { return(SPINDLE_STATE_CW); }
             }
         #endif
-	#else
+  #else
         #ifdef INVERT_SPINDLE_ENABLE_PIN
             if (bit_isfalse(SPINDLE_ENABLE_PORT,(1<<SPINDLE_ENABLE_BIT))) { 
-		#else
+    #else
             if (bit_istrue(SPINDLE_ENABLE_PORT,(1<<SPINDLE_ENABLE_BIT))) {
-		#endif
+    #endif
                 if (SPINDLE_DIRECTION_PORT & (1<<SPINDLE_DIRECTION_BIT)) { return(SPINDLE_STATE_CCW); }
                 else { return(SPINDLE_STATE_CW); }
             }
-	#endif
-	return(SPINDLE_STATE_DISABLE);
+  #endif
+  return(SPINDLE_STATE_DISABLE);
 }
 
 
@@ -97,13 +122,16 @@ uint8_t spindle_get_state()
 // Called by spindle_init(), spindle_set_speed(), spindle_set_state(), and mc_reset().
 void spindle_stop()
 {
+    #if defined(VARIABLE_SPINDLE) && defined(USE_SPINDLE_DIR_AS_ENABLE_PIN) && !defined(SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED)
+      spindle_enable_pending = false;
+    #endif
     #ifdef VARIABLE_SPINDLE
         pwm_set_width(&SPINDLE_PWM_CHANNEL, 0);
         #ifdef USE_SPINDLE_DIR_AS_ENABLE_PIN
             #ifdef INVERT_SPINDLE_ENABLE_PIN
-                SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);  // Set pin to high
+                SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);  // Set pin to high
             #else
-                SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT); // Set pin to low
+                SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT); // Set pin to low
             #endif
         #endif
     #else
@@ -122,6 +150,25 @@ void spindle_stop()
   void spindle_set_speed(uint32_t pwm_value)
   {
     pwm_set_width(&SPINDLE_PWM_CHANNEL, pwm_value);
+    
+    #ifdef USE_SPINDLE_DIR_AS_ENABLE_PIN
+      #ifdef SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED
+        // Turn off enable pin when PWM is at off value (for G0 moves)
+        if (pwm_value <= spindle_pwm_off_value) {
+          #ifdef INVERT_SPINDLE_ENABLE_PIN
+            SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);  // Set pin to high
+          #else
+            SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT); // Set pin to low
+          #endif
+        } else {
+          #ifdef INVERT_SPINDLE_ENABLE_PIN
+            SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT); // Set pin to low
+          #else
+            SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);  // Set pin to high
+          #endif
+        }
+      #endif
+    #endif
   }
 
 
@@ -129,6 +176,10 @@ void spindle_stop()
   uint32_t spindle_compute_pwm_value(float rpm)
   {
     uint32_t pwm_value;
+    if (spindle_pwm_max_value <= 1.0f) {
+      sys.spindle_speed = 0;
+      return 0;
+    }
     rpm *= (0.010*sys.spindle_speed_ovr); // Scale by spindle speed override value.
     if (rpm <= 0) {
       sys.spindle_speed = 0;
@@ -172,6 +223,11 @@ void spindle_stop()
   
   } else {
   
+    #if defined(VARIABLE_SPINDLE) && defined(USE_SPINDLE_DIR_AS_ENABLE_PIN) && !defined(SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED)
+      // After a laser hold, leave the gate off until the stepper executes a powered segment.
+      if (spindle_enable_pending) { return; }
+    #endif
+
     #ifndef USE_SPINDLE_DIR_AS_ENABLE_PIN
       if (state == SPINDLE_ENABLE_CW) {
         SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT);
@@ -189,12 +245,18 @@ void spindle_stop()
     #endif
     #if (defined(USE_SPINDLE_DIR_AS_ENABLE_PIN) && \
         !defined(SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED)) || !defined(VARIABLE_SPINDLE)
-      // NOTE: Without variable spindle, the enable bit should just turn on or off, regardless
-      // if the spindle speed value is zero, as its ignored anyhow.
-      #ifdef INVERT_SPINDLE_ENABLE_PIN
-        SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+      #ifdef USE_SPINDLE_DIR_AS_ENABLE_PIN
+        #ifdef INVERT_SPINDLE_ENABLE_PIN
+          SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT);
+        #else
+          SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);
+        #endif
       #else
-        SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+        #ifdef INVERT_SPINDLE_ENABLE_PIN
+          SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+        #else
+          SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+        #endif
       #endif   
     #endif
   

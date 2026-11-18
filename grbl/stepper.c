@@ -439,7 +439,7 @@ extern "C" void TIMER1_IRQHandler()
 
       #ifdef VARIABLE_SPINDLE
         // Set real-time spindle output as segment is loaded, just prior to the first step.
-        spindle_set_speed(st.exec_segment->spindle_pwm);
+        spindle_set_segment_speed(st.exec_segment->spindle_pwm);
       #endif
 
     } else {

@@ -230,7 +230,22 @@ uint8_t read_global_settings() {
 // A helper method to set settings from command line
 uint8_t settings_store_global_setting(uint8_t parameter, float value) {
   if (value < 0.0) { return(STATUS_NEGATIVE_VALUE); }
-  if (parameter >= AXIS_SETTINGS_START_VAL) {
+  if (parameter >= 33 && parameter <= 36) {
+    if (!isfinite(value)) { return(STATUS_INVALID_STATEMENT); }
+    if (parameter == 33) {
+      // Keep the PWM period representable and leave room for a nonzero pulse width.
+      if (value < 1.0f || value > SystemCoreClock / 2) { return(STATUS_INVALID_STATEMENT); }
+      settings.spindle_pwm_freq = value;
+    } else {
+      if (value > 100.0f) { return(STATUS_INVALID_STATEMENT); }
+      switch (parameter) {
+        case 34: settings.spindle_pwm_off_value = value; break;
+        case 35: settings.spindle_pwm_min_value = value; break;
+        case 36: settings.spindle_pwm_max_value = value; break;
+      }
+    }
+    spindle_init();
+  } else if (parameter >= AXIS_SETTINGS_START_VAL) {
     // Store axis configuration. Axis numbering sequence set by AXIS_SETTING defines.
     // NOTE: Ensure the setting index corresponds to the report.c settings printout.
     parameter -= AXIS_SETTINGS_START_VAL;
@@ -336,10 +351,6 @@ uint8_t settings_store_global_setting(uint8_t parameter, float value) {
           return(STATUS_SETTING_DISABLED);
         #endif
         break;
-      case 33: settings.spindle_pwm_freq = value; spindle_init(); break; // Re-initialize spindle pwm calibration
-      case 34: settings.spindle_pwm_off_value = value; spindle_init(); break; // Re-initialize spindle pwm calibration
-      case 35: settings.spindle_pwm_min_value = value; spindle_init(); break; // Re-initialize spindle pwm calibration
-      case 36: settings.spindle_pwm_max_value = value; spindle_init(); break; // Re-initialize spindle pwm calibration
       default:
         return(STATUS_INVALID_STATEMENT);
     }

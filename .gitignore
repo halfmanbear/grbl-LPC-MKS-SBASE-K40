@@ -3,6 +3,5 @@
 *.elf
 *.DS_Store
 *.d
-
-build
+*.gcode
 README.md

@@ -669,6 +669,7 @@ static void protocol_exec_rt_suspend()
               if (bit_isfalse(sys.suspend,SUSPEND_RESTART_RETRACT)) {
                 if (bit_istrue(settings.flags,BITFLAG_LASER_MODE)) {
                   // When in laser mode, ignore spindle spin-up delay. Set to turn on laser when cycle starts.
+                  spindle_defer_enable_until_motion();
                   bit_true(sys.step_control, STEP_CONTROL_UPDATE_SPINDLE_PWM);
                 } else {
                   spindle_set_state((restore_condition & (PL_COND_FLAG_SPINDLE_CW | PL_COND_FLAG_SPINDLE_CCW)), restore_spindle_speed);
@@ -734,6 +735,7 @@ static void protocol_exec_rt_suspend()
               report_feedback_message(MESSAGE_SPINDLE_RESTORE);
               if (bit_istrue(settings.flags,BITFLAG_LASER_MODE)) {
                 // When in laser mode, ignore spindle spin-up delay. Set to turn on laser when cycle starts.
+                spindle_defer_enable_until_motion();
                 bit_true(sys.step_control, STEP_CONTROL_UPDATE_SPINDLE_PWM);
               } else {
                 spindle_set_state((restore_condition & (PL_COND_FLAG_SPINDLE_CW | PL_COND_FLAG_SPINDLE_CCW)), restore_spindle_speed);

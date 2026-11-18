@@ -32,15 +32,19 @@
 
 
 // Define board type for pin map and default settings.
-#define CPU_MAP_SMOOTHIEBOARD   // Smoothieboard (NXP LPC1769 MCU)
+//define CPU_MAP_SMOOTHIEBOARD   // Smoothieboard (NXP LPC1769 MCU)
 //#define CPU_MAP_C3D_REMIX       // Cohesion3D Remix (NXP LPC1769 MCU)
 //#define CPU_MAP_C3D_MINI        // Cohesion3D Mini (NXP LPC1769 MCU)
-//#define CPU_MAP_MKS_SBASE       // MKS SBASE Board (NXP LPC1768 MCU)
+#define CPU_MAP_MKS_SBASE       // MKS SBASE Board (NXP LPC1768 MCU)
 //#define CPU_MAP_AZTEEG_X5       // Azteeg X5 Board (NXP LPC1769 MCU)
 
 // Force other Spindle PWM Pin (default is P2.5)
-//#define SPINDLE_PWM_PIN_1_23
+#define SPINDLE_PWM_PIN_1_23
 //#define SPINDLE_PWM_PIN_2_4
+
+// Drive P4.28 (MKS SBASE J8 pin 6) high at boot as a 3.3 V supply for an external level shifter's
+// low-voltage side. GPIO source capability is ~4 mA; use the J2 3.3 V rail for heavier loads.
+#define LEVEL_SHIFTER_SUPPLY_P4_28
 
 // Define machine type for machine specific defaults
 //#define DEFAULTS_GENERIC
@@ -223,7 +227,7 @@
 // NOTE: If VARIABLE_SPINDLE is enabled(default), this option has no effect as the PWM output and
 // spindle enable are combined to one pin. If you need both this option and spindle speed PWM,
 // uncomment the config option USE_SPINDLE_DIR_AS_ENABLE_PIN below.
-#define INVERT_SPINDLE_ENABLE_PIN // Default disabled. Uncomment to enable.
+//#define INVERT_SPINDLE_ENABLE_PIN // Default disabled. Uncomment to enable.
 
 // Inverts the selected coolant pin from low-disabled/high-enabled to low-enabled/high-disabled. Useful
 // for some pre-built electronic boards.
@@ -412,7 +416,7 @@
 // input. However, in some use cases, user may want the enable pin to disable with a zero spindle speed and 
 // re-enable when spindle speed is greater than zero. This option does that.
 // NOTE: Requires USE_SPINDLE_DIR_AS_ENABLE_PIN to be enabled.
-// #define SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED // Default disabled. Uncomment to enable.
+//#define SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED // Default disabled. Uncomment to enable.
 
 // With this enabled, Grbl sends back an echo of the line it has received, which has been pre-parsed (spaces
 // removed, capitalized letters, no comments) and is to be immediately executed by Grbl. Echoes will not be

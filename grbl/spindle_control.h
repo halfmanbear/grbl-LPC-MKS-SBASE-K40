@@ -29,6 +29,13 @@
 #define SPINDLE_STATE_CW       bit(0)
 #define SPINDLE_STATE_CCW      bit(1)
 
+#if defined(VARIABLE_SPINDLE) && defined(USE_SPINDLE_DIR_AS_ENABLE_PIN) && !defined(SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED)
+  void spindle_defer_enable_until_motion();
+  void spindle_set_segment_speed(uint32_t pwm_value);
+#else
+  #define spindle_defer_enable_until_motion() ((void)0)
+  #define spindle_set_segment_speed(pwm_value) spindle_set_speed(pwm_value)
+#endif
 
 // Initializes spindle pins and hardware PWM, if enabled.
 void spindle_init();

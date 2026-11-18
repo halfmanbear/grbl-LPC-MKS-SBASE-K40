@@ -541,9 +541,9 @@
   #define SPINDLE_ENABLE_DDR        LPC_GPIO1->FIODIR
   #define SPINDLE_ENABLE_PORT       LPC_GPIO1->FIOPIN
   #define SPINDLE_ENABLE_BIT        30  // P1.30
-  #define SPINDLE_DIRECTION_DDR     LPC_GPIO1->FIODIR
-  #define SPINDLE_DIRECTION_PORT    LPC_GPIO1->FIOPIN
-  #define SPINDLE_DIRECTION_BIT     31  // P1.31
+  #define SPINDLE_DIRECTION_DDR     LPC_GPIO2->FIODIR //was LPC_GPIO1->FIODIR
+  #define SPINDLE_DIRECTION_PORT    LPC_GPIO2->FIOPIN //was LPC_GPIO1->FIOPIN
+  #define SPINDLE_DIRECTION_BIT     5  //P2.5 was 31 //P1.31
 
   // Define flood and mist coolant enable output pins.
   #define COOLANT_FLOOD_DDR   LPC_GPIO2->FIODIR
@@ -559,14 +559,20 @@
   #define CONTROL_DDR       LPC_GPIO1->FIODIR
   #define CONTROL_PIN       LPC_GPIO1->FIOPIN
   #define CONTROL_PORT      LPC_GPIO1->FIOPIN
-  #define CONTROL_RESET_BIT         NotUsed  // Not needed as there is a special RESET pin on the Smoothiebaord
+  // The board's reset button uses the dedicated hardware reset input.
   #define CONTROL_FEED_HOLD_BIT     22  // P1.22
-  #define CONTROL_CYCLE_START_BIT   23  // P1.23
+  #ifndef SPINDLE_PWM_PIN_1_23
+    #define CONTROL_CYCLE_START_BIT 23  // P1.23
+  #endif
   #define CONTROL_SAFETY_DOOR_BIT   22  // P1.22 NOTE: Safety door is shared with feed hold. Enabled by config define.
   #define CONTROL_INT       PCIE1  // Pin change interrupt enable pin
   #define CONTROL_INT_vect  PCINT1_vect
   #define CONTROL_PCMSK     NotUsed // Pin change interrupt register
-  #define CONTROL_MASK      ((1<<CONTROL_RESET_BIT)|(1<<CONTROL_FEED_HOLD_BIT)|(1<<CONTROL_CYCLE_START_BIT)|(1<<CONTROL_SAFETY_DOOR_BIT))
+  #ifdef CONTROL_CYCLE_START_BIT
+    #define CONTROL_MASK      ((1<<CONTROL_FEED_HOLD_BIT)|(1<<CONTROL_CYCLE_START_BIT)|(1<<CONTROL_SAFETY_DOOR_BIT))
+  #else
+    #define CONTROL_MASK      ((1<<CONTROL_FEED_HOLD_BIT)|(1<<CONTROL_SAFETY_DOOR_BIT))
+  #endif
   #define CONTROL_INVERT_MASK   CONTROL_MASK // May be re-defined to only invert certain control pins.
 
   // Define probe switch input pin.
@@ -581,16 +587,13 @@
   // PWM Channel      PWM1_CH1  PWM1_CH2  PWM1_CH3  PWM1_CH4  PWM1_CH5  PWM1_CH6
   // Primary pin      P1.18     P1.20     P1.21     P1.23     P1.24     P1.26
   // Secondary pin    P2.0      P2.1      P2.2      P2.3      P2.4      P2.5
-  #define SPINDLE_PWM_CHANNEL           PWM1_CH6    // BED MOSFET (P2.5)
-  #define SPINDLE_PWM_USE_PRIMARY_PIN   false
-  #define SPINDLE_PWM_USE_SECONDARY_PIN true
-  #ifdef SPINDLE_PWM_PIN_1_23
-    #define SPINDLE_PWM_CHANNEL           PWM1_CH4    // MOSFET3 (P1.23)
+  #if defined(SPINDLE_PWM_PIN_1_23)
+    #define SPINDLE_PWM_CHANNEL           PWM1_CH4    // P1.23 (J8 pin 3)
     #define SPINDLE_PWM_USE_PRIMARY_PIN   true
     #define SPINDLE_PWM_USE_SECONDARY_PIN false
-  #endif
-  #ifdef SPINDLE_PWM_PIN_2_4
-    #define SPINDLE_PWM_CHANNEL           PWM1_CH5    // MOSFET3 (P1.23)
+  #else
+    // SPINDLE_PWM_PIN_2_4 and the default both use P2.4. (Upstream default was BED MOSFET P2.5.)
+    #define SPINDLE_PWM_CHANNEL           PWM1_CH5    // FAN MOSFET (P2.4)
     #define SPINDLE_PWM_USE_PRIMARY_PIN   false
     #define SPINDLE_PWM_USE_SECONDARY_PIN true
   #endif

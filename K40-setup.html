@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K40 wiring and GRBL-LPC setup</title>
+<style>
+  :root { color-scheme: light; }
+  body { max-width: 52rem; margin: 3rem auto; padding: 0 1.25rem; font: 1rem/1.55 system-ui, sans-serif; color: #162322; background: #fafbf9; }
+  h1 { line-height: 1.1; }
+  h2 { margin-top: 2rem; border-bottom: 1px solid #ccd8d3; padding-bottom: .35rem; }
+  a { color: #175b4c; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; vertical-align: top; padding: .55rem; border-bottom: 1px solid #ccd8d3; }
+  th { background: #eaf2ed; }
+  li + li { margin-top: .4rem; }
+  @media print { body { margin: 0; background: white; } tr { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>K40 wiring and GRBL-LPC setup</h1>
+<p>K40 CO₂ laser cutter · MKS SBASE v1.3 with LPC1769 · GRBL-LPC · LightBurn</p>
+</header>
+
+<section>
+<h2>As-wired connections</h2>
+<table>
+<thead><tr><th scope="col">Signal</th><th scope="col">Connection and function</th></tr></thead>
+<tbody>
+<tr><td>Firing gate</td><td>P2.5 drives the BED low-side MOSFET. BED negative connects to the laser PSU’s active-low <code>L</code> input. P2.5 high turns Q4 on and pulls <code>L</code> low. BED positive is on the board supply rail and must stay disconnected from <code>L</code>.</td></tr>
+<tr><td>BED indicator branch</td><td>R30 and D14 were both removed, opening the series path from <code>VIN0</code> to Q4’s drain. The BED indicator is disabled.</td></tr>
+<tr><td>Power command</td><td>J8 pin 3 (P1.23) feeds the level shifter’s low-voltage input. Its high-voltage output goes to PSU <code>IN</code>, formerly connected to the wiper of the removed 5 kΩ potentiometer.</td></tr>
+<tr><td>Level shifter supply</td><td>PSU <code>5V</code> supplies the shifter’s high-voltage side. The low-voltage side can be supplied from either of two sources:
+<ul>
+<li><strong>J8 pin 6 (P4.28)</strong>, the currently wired connection. The firmware drives P4.28 high as a GPIO output at boot (<code>LEVEL_SHIFTER_SUPPLY_P4_28</code>). A GPIO can source about 4 mA at near 3.3 V, which suits BSS138-type modules (about 0.33 mA per channel through the 10 kΩ pull-ups) and TXS/TXB-type shifters. The supply is only present while this firmware is running. It is off during power-up, reset and the bootloader, and with stock firmware.</li>
+<li><strong>J2 pin 2</strong>, the board’s regulated 3.3 V rail. This is always on and independent of firmware, and is the preferred source for heavier loads. Confirm connector orientation before moving the wire.</li>
+</ul>
+Earlier firmware left P4.28 as an input, so the shifter was fed only through the weak internal pull-up (about 50 µA). That can sag when PWM is low and leave PSU <code>IN</code> partly high.</td></tr>
+<tr><td>Signal ground</td><td>J8 pin 1 (DGND), shifter ground and PSU signal ground are common.</td></tr>
+<tr><td>Interlocks</td><td>The lid and water-flow switches are hardwired to the PSU’s <code>WP</code> protection circuit.</td></tr>
+</tbody>
+</table>
+<p><a href="https://raw.githubusercontent.com/makerbase-mks/MKS-SBASE/master/Hardware/MKS%20SBASE%20V1.3_002/MKS%20SBASE%20V1.3_002%20SCH.pdf">Makerbase V1.3_002 schematic</a></p>
+</section>
+
+<section>
+<h2>Local GRBL-LPC customisations</h2>
+<p>The checkout is based on <code>cprezzi/grbl-LPC</code> commit <code>72d029e</code> and reports <code>1.1f.20171008</code>. The local firmware artifact was verified to use P1.23 for PWM and P2.5 for the firing gate. The exact image currently flashed to the controller has yet to be identified.</p>
+<ul>
+<li>The build selects <code>CPU_MAP_MKS_SBASE</code>, <code>DEFAULTS_K40</code> and <code>SPINDLE_PWM_PIN_1_23</code>. P1.23 is the primary output for PWM1 channel 4. Its secondary output is disabled, leaving P2.3 available for A-axis step. <a href="grbl/config.h">Build configuration</a> · <a href="grbl/cpu_map.h">Pin map</a></li>
+<li><code>USE_SPINDLE_DIR_AS_ENABLE_PIN</code> uses the remapped direction pin P2.5 as the active-high firing gate. With <code>SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED</code> disabled, the gate can remain asserted at <code>S0</code> and during <code>G0</code> while spindle mode is active. <code>M5</code> clears the gate through the spindle-stop path. <a href="grbl/spindle_control.c">Spindle control</a></li>
+<li>The latest source removes P1.23 from the MKS control-input mask and cycle-start decoder when it is selected for PWM. Serial cycle start (<code>~</code>) remains available. This change passed an ARM build. Controller flashing and hardware verification of this change are pending. <a href="grbl/cpu_map.h">Control pin map</a> · <a href="grbl/system.c">Control input decoder</a></li>
+<li>An <code>M0</code> pause or a GRBL Safety Door hold releases the firing gate. On resume, the split-output firmware now waits until the stepper loads the first segment above the configured PWM off value before reasserting P2.5. The gate stays released through the pause and any initial travel or zero-power segments. Ordinary <code>S0</code> handling after the gate is restored follows the existing spindle-enable configuration. <a href="grbl/protocol.c">Hold and resume</a> · <a href="grbl/spindle_control.c">Spindle control</a> · <a href="grbl/stepper.c">Segment execution</a></li>
+<li>Local K40 defaults include 20 kHz PWM, 68% maximum duty and 320 × 230 mm nominal XY travel. The compiled off and minimum duty defaults are 0% and 1%, matching the saved settings. Stored controller settings still take precedence. The 157.5 steps/mm XY value is calibrated, not the nominal 160. <a href="grbl/defaults.h">Compiled defaults</a></li>
+<li>The MKS board uses a dedicated hardware reset input. P1.0 is excluded from the GPIO control mask, and P1.22 can still report its active-low state when it is the only configured control pin. P1.22 is the Safety Door input (<code>ENABLE_SAFETY_DOOR_INPUT_PIN</code>) and is left unconnected, because the lid and water interlocks go to the PSU. Its internal pull-up is now set explicitly in <code>PINMODE3</code>, so it reads as a closed door rather than relying on the reset default. If P1.22 is pulled low, Grbl reports the door open and blocks resume. <a href="grbl/cpu_map.h">Control pin map</a> · <a href="grbl/system.c">Control input decoder</a></li>
+<li><code>LEVEL_SHIFTER_SUPPLY_P4_28</code> configures P4.28 as a GPIO output driven high in <code>system_init()</code>, to power the level shifter’s low-voltage side from J8 pin 6. Comment it out if the shifter is moved to the J2 3.3 V rail. <a href="grbl/config.h">Build configuration</a> · <a href="grbl/system.c">System init</a></li>
+<li>PWM settings writes reject nonfinite values, frequencies that would give an invalid timer period, and duty cycles outside 0–100%. When the PWM is set up, the firmware also caps the minimum duty at the maximum and the off value at the minimum, so a mis-ordered <code>$34</code>/<code>$35</code>/<code>$36</code> cannot invert the power curve. Stored values are not changed. <a href="grbl/settings.c">Settings handler</a> · <a href="grbl/spindle_control.c">Spindle control</a></li>
+</ul>
+</section>
+
+<section>
+<h2>Reported controller settings</h2>
+<p>Saved in <a href="K40_config.nc">K40_config.nc</a>. Read <code>$$</code> on the controller to confirm live settings.</p>
+<table>
+<thead><tr><th scope="col">Function</th><th scope="col">Settings</th></tr></thead>
+<tbody>
+<tr><td>Laser and S-value</td><td><code>$30=1000</code>, <code>$31=0</code>, <code>$32=1</code></td></tr>
+<tr><td>PWM</td><td><code>$33=20000</code> Hz, <code>$34=0</code> off, <code>$35=1</code> minimum, <code>$36=68</code> maximum duty</td></tr>
+<tr><td>Homing and limits</td><td><code>$5=0</code>, <code>$20=0</code>, <code>$21=0</code>, <code>$22=1</code>, <code>$23=1</code>, <code>$24=50</code>, <code>$25=6000</code></td></tr>
+<tr><td>XY calibration and travel</td><td><code>$100=157.5</code>, <code>$101=157.5</code> steps/mm · <code>$130=320</code>, <code>$131=230</code> mm</td></tr>
+<tr><td>XY rates and acceleration</td><td><code>$110=12000</code>, <code>$111=5000</code> mm/min · <code>$120=2500</code>, <code>$121=2500</code> mm/s²</td></tr>
+<tr><td>XY driver current</td><td><code>$140=0.8</code>, <code>$141=1.0</code> A</td></tr>
+</tbody>
+</table>
+<p>The expected LightBurn profile is <strong>GRBL</strong> with <strong>S-Value Max 1000</strong>. Match the workspace and origin to the physical machine. The active profile has yet to be verified. <a href="https://docs.lightburnsoftware.com/latest/Guides/GRBLConfiguration/">LightBurn GRBL configuration</a></p>
+</section>
+
+<section>
+<h2>Operating notes</h2>
+<ul>
+<li>The setup runs and the signal levels and PWM were checked in January 2026. Intermittent re-ignition after <code>M0</code> prompted the resume fix. The rebuilt <a href="build/firmware.bin">firmware image</a> includes it. The fix still needs validation on the machine.</li>
+<li>After flashing the P4.28 build, measure J8 pin 6 to DGND while firing at low power. It should hold close to 3.3 V.</li>
+<li>For an affected cut, check that the saved G-code restores a positive <code>S</code> on the cutting move. If it does, comparing <code>M4</code> with Constant Power (<code>M3</code>) on that layer can help determine whether speed-scaled power during acceleration contributes to the missed start. <a href="grbl/gcode.c">G-code parser</a> · <a href="grbl/stepper.c">Motion and PWM updates</a></li>
+<li>The exact PSU and level-shifter models, their behaviour across reset and power loss, and an independent tube-current ceiling remain unverified. <code>$36</code> caps PWM duty. The installed analogue mA meter provides a current indication, with peak current under PWM still unverified.</li>
+<li>The firing gate stays asserted at <code>S0</code> and during <code>G0</code> while the laser is on, so only 0% PWM keeps the tube off there. To check this, run <code>M3 S0</code> with a <code>G1</code> move and a <code>G0</code> move and confirm the mA meter reads zero. If it does not, enable <code>SPINDLE_ENABLE_OFF_WITH_ZERO_SPEED</code>. The <code>M0</code> resume deferral then needs reworking, because it is compiled only when that option is off.</li>
+</ul>
+</section>
+</main>
+</body>
+</html>

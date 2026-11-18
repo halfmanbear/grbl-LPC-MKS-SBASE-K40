@@ -23,12 +23,31 @@
 
 void system_init()
 {
+  #ifdef LEVEL_SHIFTER_SUPPLY_P4_28
+    // P4.28 as GPIO output, driven high: level shifter LV supply.
+    LPC_PINCON->PINSEL9 &= ~(3UL << 24);  // GPIO function
+    LPC_GPIO4->FIOSET = (1UL << 28);      // latch high before enabling output
+    LPC_GPIO4->FIODIR |= (1UL << 28);     // output
+  #endif
+
   // Configure user control pins (for cycle start, reset, feed hold, etc.)
   CONTROL_DDR &= ~(CONTROL_MASK); // Configure as input pins
   #ifdef DISABLE_CONTROL_PIN_PULL_UP
     CONTROL_PORT &= ~(CONTROL_MASK); // Normal low operation. Requires external pull-down.
   #else
     CONTROL_PORT |= CONTROL_MASK;    // Enable internal pull-up resistors. Normal high operation.
+  #endif
+  #ifdef CPU_MAP_MKS_SBASE
+    // On the LPC17xx, writing FIOPIN does not set pull resistors; PINMODE does. MKS control
+    // pins are on P1.16-P1.31, configured by PINMODE3 (2 bits per pin: 00 = pull-up, 11 = pull-down).
+    for (uint8_t bit = 16; bit < 32; bit++) {
+      if (CONTROL_MASK & (1UL << bit)) {
+        LPC_PINCON->PINMODE3 &= ~(3UL << (2*(bit-16)));
+        #ifdef DISABLE_CONTROL_PIN_PULL_UP
+          LPC_PINCON->PINMODE3 |= (3UL << (2*(bit-16)));
+        #endif
+      }
+    }
   #endif
   CONTROL_PCMSK |= CONTROL_MASK;     // Enable specific pins of the Pin Change Interrupt
   PCICR |= (1 << CONTROL_INT);       // Enable Pin Change Interrupt
@@ -45,14 +64,16 @@ uint8_t system_control_get_state()
   #ifdef INVERT_CONTROL_PIN_MASK
     pin ^= INVERT_CONTROL_PIN_MASK;
   #endif
-  if (pin) {
-    #ifdef ENABLE_SAFETY_DOOR_INPUT_PIN
-      if (bit_isfalse(pin,(1<<CONTROL_SAFETY_DOOR_BIT))) { control_state |= CONTROL_PIN_INDEX_SAFETY_DOOR; }
-    #endif
+  #ifdef ENABLE_SAFETY_DOOR_INPUT_PIN
+    if (bit_isfalse(pin,(1<<CONTROL_SAFETY_DOOR_BIT))) { control_state |= CONTROL_PIN_INDEX_SAFETY_DOOR; }
+  #endif
+  #ifdef CONTROL_RESET_BIT
     if (bit_isfalse(pin,(1<<CONTROL_RESET_BIT))) { control_state |= CONTROL_PIN_INDEX_RESET; }
-    if (bit_isfalse(pin,(1<<CONTROL_FEED_HOLD_BIT))) { control_state |= CONTROL_PIN_INDEX_FEED_HOLD; }
+  #endif
+  if (bit_isfalse(pin,(1<<CONTROL_FEED_HOLD_BIT))) { control_state |= CONTROL_PIN_INDEX_FEED_HOLD; }
+  #ifdef CONTROL_CYCLE_START_BIT
     if (bit_isfalse(pin,(1<<CONTROL_CYCLE_START_BIT))) { control_state |= CONTROL_PIN_INDEX_CYCLE_START; }
-  }
+  #endif
   return(control_state);
 }
 
