@@ -6,13 +6,18 @@
 # in ONE write, so Grbl already has M5 buffered before firing starts: the pulse ends after SECS
 # even if this script or the USB link dies. $32 is restored and verified afterwards.
 #
+# Homes ($H) and moves to START_X/START_Y (machine coordinates, default mid-bed) before firing.
+#
 # Usage:   ./laser_pulse_test.sh            (S=1000 for 1 s: full power = $36 duty)
 #          S=500 SECS=0.5 ./laser_pulse_test.sh
+#          HOMING=0 ./laser_pulse_test.sh   (already homed: skip $H)
+#          START_X=100 START_Y=50 ./laser_pulse_test.sh
 # Ctrl-C sends a Grbl soft reset (laser off immediately) and restores $32.
 
 set -u
 PORT=${PORT:-/dev/ttyACM0}
 S=${S:-1000}; SECS=${SECS:-1}
+START_X=${START_X:-150}; START_Y=${START_Y:-80}; HOMING=${HOMING:-1}
 FIRING=0; ORIG32=""; OPEN=0
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -33,7 +38,7 @@ wait_ok() {
   done
   echo "  Timed out waiting for Grbl" >&2; return 1
 }
-send() { printf '%s\n' "$1" >&3; wait_ok 1 10; }
+send() { printf '%s\n' "$1" >&3; wait_ok 1 "${2:-10}"; }   # send LINE [timeout_s]
 
 status() {
   local l; printf '?' >&3
@@ -85,13 +90,29 @@ drain 1.5
 st=""; for _ in 1 2 3; do st=$(status) && break; drain 1; done
 [[ -n $st ]] || die "no status reply from Grbl"
 echo "Status: $st"
-[[ $st == "<Idle"* ]] || die "Grbl must be Idle"
+[[ $st == "<Idle"* || $st == "<Alarm"* ]] || die "Grbl must be Idle or Alarm (not running a job)"
+[[ $HOMING == 1 || $st == "<Idle"* ]] || die "Grbl is in Alarm; run with HOMING=1 (default) or home first"
 
 m32=$(get_setting 32) || die "could not read \$32"
 v34=$(get_setting 34) || die "could not read \$34"
 v30=$(get_setting 30); v35=$(get_setting 35); v36=$(get_setting 36)
 awk -v v="$v34" 'BEGIN{exit !(v+0 == 0)}' || die "\$34 is $v34; set \$34=0 first."
+v130=$(get_setting 130); v131=$(get_setting 131)
+awk -v x="$START_X" -v y="$START_Y" -v xm="$v130" -v ym="$v131" 'BEGIN{exit !(x>=0 && y>=0 && x<=xm && y<=ym)}' \
+  || die "START_X/START_Y ($START_X,$START_Y) outside work area 0-$v130 x 0-$v131"
 duty=$(awk -v s="$S" -v smax="$v30" -v lo="$v35" -v hi="$v36" 'BEGIN{printf "%.1f", lo+(hi-lo)*s/smax}')
+
+# --- home and move to the firing position ------------------------------------
+echo
+if [[ $HOMING == 1 ]]; then echo "Next: home (\$H, rear-left), then move to X$START_X Y$START_Y. Laser stays off."
+else echo "Next: move to X$START_X Y$START_Y (no homing). Laser stays off."; fi
+[[ $(ask 'Bed clear and head free to move? [y/N] ') == [yY]* ]] || { echo "Cancelled."; exit 0; }
+FIRING=1                                   # Ctrl-C during motion -> soft reset
+if [[ $HOMING == 1 ]]; then echo "Homing..."; send '$H' 120 || die "homing failed"; fi
+send "G21 G90 G53 G0 X$START_X Y$START_Y" 60 || exit 1
+send 'G4 P0.01' 60 || exit 1               # wait until the move has finished
+FIRING=0
+st=$(status) && echo "At: $st"
 
 cat <<EOF
 

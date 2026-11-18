@@ -105,8 +105,8 @@
   #define DEFAULT_A_MAX_TRAVEL 100.0        // mm NOTE: Must be a positive value.
   #define DEFAULT_SPINDLE_PWM_FREQ 20000     // Hz (2000 - 20000)
   #define DEFAULT_SPINDLE_PWM_OFF_VALUE 0    // %
-  #define DEFAULT_SPINDLE_PWM_MIN_VALUE 17   // % just below tube firing threshold (first mark 17.68% / ~4.25 mA, Nov 2026)
-  #define DEFAULT_SPINDLE_PWM_MAX_VALUE 68   // %
+  #define DEFAULT_SPINDLE_PWM_MIN_VALUE 11   // % just below tube firing threshold (first mark 11.88% with 2.2k-stiffened IN drive, Nov 2026)
+  #define DEFAULT_SPINDLE_PWM_MAX_VALUE 54   // % gives ~15 mA at S1000 with the 2.2k-stiffened IN drive (Nov 2026)
   #define DEFAULT_SPINDLE_RPM_MAX 1000.0    // rpm (S-value)
   #define DEFAULT_SPINDLE_RPM_MIN 0.0       // rpm (S-value)
   #define DEFAULT_STEP_PULSE_MICROSECONDS 10
